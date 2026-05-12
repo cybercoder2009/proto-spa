@@ -13,7 +13,7 @@ const Login = _ => {
         try {
             const data = await login(values.email, values.password)
             message.success(`Welcome, ${data.email}`)
-            navigate(data.role === 'user' ? '/exam' : '/admin')
+            navigate(data.role === 'user' ? '/user' : '/admin')
         } catch {
             message.error('Incorrect email or password')
         } finally {

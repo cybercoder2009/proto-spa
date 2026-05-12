@@ -38,7 +38,7 @@ const App = _ => {
                             <Route index element={<AdminIndex />} />
                         </Route>
                         <Route
-                            path="/exam"
+                            path="/user"
                             element={
                                 <RequireAuth>
                                     <User />
