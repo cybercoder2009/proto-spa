@@ -1,5 +1,7 @@
 target/
-Cargo.lock
-public/*
-!public/index.html
-!public/favicon.ico
+logs/
+public/
+**/node_modules
+
+.DS_Store
+.vscode/

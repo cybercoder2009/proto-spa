@@ -1,60 +1,74 @@
-use std::fs::{read_to_string, File};
-use std::io::Write;
-use std::sync::Arc;
-use actix_files::Files;
-use actix_web::{HttpServer,web,App};
-use mongodb::{Client,Database};
+use axum::{Router, routing::post};
+use flexi_logger::{Age, Cleanup, Criterion, Duplicate, FileSpec, Logger, Naming};
 use mongodb::options::ClientOptions;
+use mongodb::{Client, Database};
+use std::fs::read_to_string;
+use std::sync::Arc;
+use tower_http::services::ServeDir;
 
-use server::r_auth::{register,login};
-use server::s_state::State;
-use server::s_config::Config;
-use server::constants::HTML;
+use server::routes::login;
+use server::routes::register;
+use server::seeding;
+use server::structs::config::Config;
+use server::structs::state::State;
 
-#[actix_web::main]
-async fn main() -> std::io::Result<()> {
-
+#[tokio::main]
+async fn main() {
     // read config
-    let config_str: String = read_to_string("config.toml")
-    .expect("err-reading-config");
-    let config: Config = toml::from_str(&config_str)
-    .expect("err-parsing-config");
-    println!("{:?}", config);
+    let config_str: String = read_to_string("config.toml").expect("err-reading-config");
+    let config: Config = toml::from_str(&config_str).expect("err-parsing-config");
 
-    // build index
-    let mut f: File = File::create("./public/index.html").expect("err-opening-index");
-    f.write_all(
-        HTML.replace("[TITLE]", &config.title)
-            .replace("[KEYWORDS]", &config.keywords)
-            .replace("[DESCRIPTION]", &config.description)
-            .as_bytes()
-    ).expect("err-writing-index");
-    drop(f);
+    // init logging
+    let _logger = Logger::try_with_env_or_str("info")
+        .expect("failed to parse logger env")
+        .format(flexi_logger::detailed_format)
+        .log_to_file(FileSpec::default().directory("logs").basename("server"))
+        .duplicate_to_stderr(Duplicate::All)
+        .rotate(
+            Criterion::Age(Age::Day),
+            Naming::Timestamps,
+            Cleanup::KeepLogFiles(30),
+        )
+        .start()
+        .expect("failed to initialize flexi_logger");
 
-    // init state(db)
+    // init db
     let opt: ClientOptions = ClientOptions::parse(config.mongo_binding)
-        .await.expect("err-parsing-mongo-connection-string");
+        .await
+        .expect("err-parsing-mongo-connection-string");
     let db: Database = Client::with_options(opt)
         .expect("err-connecting-mongo")
         .database(&config.mongo_db);
-    let state: State = State {db: Arc::new(db)};
 
-    // init logging
-    env_logger::init();
+    // init users
+    seeding::users(&db).await.expect("err-seeding-db");
+
+    // init state
+    let state: State = State { db: Arc::new(db) };
 
     // init server
-    HttpServer::new(move || {
-        App::new()
-        .app_data(web::Data::new(state.clone()))
-        // .route("/test", web::get().to(|| async {"/test"}))
-        .service(
-            web::scope("/rest")
-            .service(register)
-            .service(login)
-        )
-        .service(Files::new("/", "./public").index_file("index.html"))
-    })
-    .bind(&config.server_rest)
-    .expect("err-binding-server")
-    .run().await
+    use axum::http::Method;
+    use tower_http::cors::{Any, CorsLayer};
+
+    let cors = CorsLayer::new()
+        .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
+        .allow_headers(Any)
+        .allow_origin(Any);
+
+    let app = Router::new()
+        .route("/api/register", post(register::post))
+        .route("/api/login", post(login::post))
+        .fallback_service(ServeDir::new("./public"))
+        .layer(cors)
+        .with_state(state);
+    println!("Server listening on: {}", config.binding);
+
+    axum::serve(
+        tokio::net::TcpListener::bind(&config.binding)
+            .await
+            .expect("err-binding-server"),
+        app,
+    )
+    .await
+    .expect("err-running-server");
 }
