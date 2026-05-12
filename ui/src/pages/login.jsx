@@ -13,16 +13,12 @@ const Login = _ => {
         try {
             const data = await login(values.email, values.password)
             message.success(`Welcome, ${data.email}`)
-
-            if (data.role === 'user') {
-                navigate('/exam')
-            } else {
-                navigate('/admin')
-            }
+            navigate(data.role === 'user' ? '/exam' : '/admin')
         } catch {
             message.error('Incorrect email or password')
+        } finally {
+            setLoading(false)
         }
-        setLoading(false)
     }
 
     return (
@@ -36,7 +32,7 @@ const Login = _ => {
             }}
         >
             <Card
-                title="APCAT Online Test System"
+                title="Login"
                 style={{ width: 400, boxShadow: '0 8px 32px rgba(0,0,0,0.2)' }}
             >
                 <Form
