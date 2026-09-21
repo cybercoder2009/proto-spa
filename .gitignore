@@ -1,0 +1,23 @@
+# Rust build artifacts
+target/
+**/target/
+
+# WASM build artifacts
+pkg/
+**/pkg/
+
+# Server build output & static bundle
+server/public/
+
+# Logs
+logs/
+*.log
+
+# Environment & local secrets
+.env
+*.local
+
+# OS & IDE
+.DS_Store
+.vscode/
+.idea/
